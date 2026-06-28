@@ -7,14 +7,13 @@ const app = express();
 app.use(express.json());
 
 const SEED_DATA_PATH = path.join(__dirname, 'seed.json');
-
 let seedData = null;
 
 function loadData() {
   try {
     const raw = fs.readFileSync(SEED_DATA_PATH, 'utf8');
     seedData = JSON.parse(raw);
-    console.log(`Loaded seed data from ${path.basename(SEED_DATA_PATH)} successfully.`);
+    console.log('Loaded seed data from seed.json successfully.');
   } catch (err) {
     console.error('Failed to load seed data:', err);
     process.exit(1);
@@ -22,16 +21,7 @@ function loadData() {
 }
 loadData();
 
-function saveData() {
-  try {
-    fs.writeFileSync(SEED_DATA_PATH, JSON.stringify(seedData, null, 2), 'utf8');
-    console.log('Saved seed data successfully.');
-  } catch (err) {
-    console.error('Failed to save seed data:', err);
-  }
-}
-
-// Health Check
+// Health Check (GET /)
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
@@ -39,12 +29,12 @@ app.get('/', (req, res) => {
   });
 });
 
-// Provinces Collection
+// GET /provinces
 app.get('/provinces', (req, res) => {
   res.json(seedData.provinces);
 });
 
-// Province Member
+// GET /provinces/:provinceId
 app.get('/provinces/:provinceId', (req, res) => {
   const id = parseInt(req.params.provinceId, 10);
   const province = seedData.provinces.find((p) => p.id === id);
@@ -56,7 +46,7 @@ app.get('/provinces/:provinceId', (req, res) => {
   res.json(province);
 });
 
-// Districts Collection
+// GET /districts
 app.get('/districts', (req, res) => {
   const { province_id } = req.query;
   let districts = seedData.districts;
@@ -69,7 +59,7 @@ app.get('/districts', (req, res) => {
   res.json(districts);
 });
 
-// District Member
+// GET /districts/:districtId
 app.get('/districts/:districtId', (req, res) => {
   const id = parseInt(req.params.districtId, 10);
   const district = seedData.districts.find((d) => d.id === id);
@@ -81,7 +71,7 @@ app.get('/districts/:districtId', (req, res) => {
   res.json(district);
 });
 
-// Stations Collection
+// GET /stations
 app.get('/stations', (req, res) => {
   const { district_id } = req.query;
   let stations = seedData.stations;
@@ -94,7 +84,7 @@ app.get('/stations', (req, res) => {
   res.json(stations);
 });
 
-// Station Member
+// GET /stations/:stationId
 app.get('/stations/:stationId', (req, res) => {
   const id = parseInt(req.params.stationId, 10);
   const station = seedData.stations.find((s) => s.id === id);
@@ -106,7 +96,7 @@ app.get('/stations/:stationId', (req, res) => {
   res.json(station);
 });
 
-// Vehicles Collection
+// GET /vehicles
 app.get('/vehicles', (req, res) => {
   const { station_id, district_id, province_id } = req.query;
   let vehicles = seedData.vehicles;
@@ -134,11 +124,10 @@ app.get('/vehicles', (req, res) => {
   res.json(vehicles);
 });
 
-// Vehicle Member
+// GET /vehicles/:vehicleId
 app.get('/vehicles/:vehicleId', (req, res) => {
   const vId = req.params.vehicleId;
 
-  // Find by ID, register_number, or device_id (case-insensitive)
   const vehicle = seedData.vehicles.find(
     (v) =>
       v.id === parseInt(vId, 10) ||
@@ -153,71 +142,10 @@ app.get('/vehicles/:vehicleId', (req, res) => {
   res.json(vehicle);
 });
 
-// Register new vehicle
-app.post('/vehicles', (req, res) => {
-  const { register_number, device_id, station_id } = req.body;
-
-  if (!register_number || !device_id || station_id === undefined) {
-    return res.status(400).json({
-      error: 'Missing required fields: register_number, device_id, station_id',
-    });
-  }
-
-  const stationIdInt = parseInt(station_id, 10);
-  if (isNaN(stationIdInt)) {
-    return res.status(400).json({ error: 'Invalid station_id: must be a number' });
-  }
-
-  // Validate station exists
-  const stationExists = seedData.stations.some((s) => s.id === stationIdInt);
-  if (!stationExists) {
-    return res
-      .status(400)
-      .json({ error: `Station with ID ${stationIdInt} does not exist` });
-  }
-
-  // Validate register_number uniqueness
-  const regExists = seedData.vehicles.some(
-    (v) => v.register_number.toLowerCase() === register_number.toLowerCase(),
-  );
-  if (regExists) {
-    return res.status(400).json({
-      error: `Vehicle with registration number '${register_number}' is already registered`,
-    });
-  }
-
-  // Validate device_id uniqueness
-  const devExists = seedData.vehicles.some(
-    (v) => v.device_id.toLowerCase() === device_id.toLowerCase(),
-  );
-  if (devExists) {
-    return res
-      .status(400)
-      .json({ error: `Device ID '${device_id}' is already assigned to a vehicle` });
-  }
-
-  // Generate new auto-incremented ID
-  const maxId = seedData.vehicles.reduce((max, v) => (v.id > max ? v.id : max), 0);
-  const newId = maxId + 1;
-
-  const newVehicle = {
-    id: newId,
-    register_number,
-    device_id,
-    station_id: stationIdInt,
-  };
-
-  seedData.vehicles.push(newVehicle);
-  saveData();
-
-  res.status(201).json(newVehicle);
-});
-
-// Vehicle Pings (Scoped route)
+// GET /vehicles/:vehicleId/pings
 app.get('/vehicles/:vehicleId/pings', (req, res) => {
   const vId = req.params.vehicleId;
 
-  // Find by ID, register_number, or device_id (case-insensitive)
   const vehicle = seedData.vehicles.find(
     (v) =>
       v.id === parseInt(vId, 10) ||
