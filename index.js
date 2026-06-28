@@ -31,19 +31,26 @@ app.get('/', (req, res) => {
 
 // GET /provinces
 app.get('/provinces', (req, res) => {
-  res.json(seedData.provinces);
+  const mapped = seedData.provinces.map((p) => ({
+    province_id: p.id,
+    name: p.name,
+  }));
+  res.json(mapped);
 });
 
-// GET /provinces/:provinceId
-app.get('/provinces/:provinceId', (req, res) => {
-  const id = parseInt(req.params.provinceId, 10);
+// GET /provinces/:id
+app.get('/provinces/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
   const province = seedData.provinces.find((p) => p.id === id);
 
   if (!province) {
     return res.status(404).json({ error: 'Province not found' });
   }
 
-  res.json(province);
+  res.json({
+    province_id: province.id,
+    name: province.name,
+  });
 });
 
 // GET /districts
@@ -56,19 +63,28 @@ app.get('/districts', (req, res) => {
     districts = districts.filter((d) => d.province_id === provId);
   }
 
-  res.json(districts);
+  const mapped = districts.map((d) => ({
+    district_id: d.id,
+    name: d.name,
+    province_id: d.province_id,
+  }));
+  res.json(mapped);
 });
 
-// GET /districts/:districtId
-app.get('/districts/:districtId', (req, res) => {
-  const id = parseInt(req.params.districtId, 10);
+// GET /districts/:id
+app.get('/districts/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
   const district = seedData.districts.find((d) => d.id === id);
 
   if (!district) {
     return res.status(404).json({ error: 'District not found' });
   }
 
-  res.json(district);
+  res.json({
+    district_id: district.id,
+    name: district.name,
+    province_id: district.province_id,
+  });
 });
 
 // GET /stations
@@ -81,19 +97,28 @@ app.get('/stations', (req, res) => {
     stations = stations.filter((s) => s.district_id === distId);
   }
 
-  res.json(stations);
+  const mapped = stations.map((s) => ({
+    station_id: s.id,
+    name: s.name,
+    district_id: s.district_id,
+  }));
+  res.json(mapped);
 });
 
-// GET /stations/:stationId
-app.get('/stations/:stationId', (req, res) => {
-  const id = parseInt(req.params.stationId, 10);
+// GET /stations/:id
+app.get('/stations/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
   const station = seedData.stations.find((s) => s.id === id);
 
   if (!station) {
     return res.status(404).json({ error: 'Station not found' });
   }
 
-  res.json(station);
+  res.json({
+    station_id: station.id,
+    name: station.name,
+    district_id: station.district_id,
+  });
 });
 
 // GET /vehicles
@@ -121,12 +146,18 @@ app.get('/vehicles', (req, res) => {
     vehicles = vehicles.filter((v) => stationIds.has(v.station_id));
   }
 
-  res.json(vehicles);
+  const mapped = vehicles.map((v) => ({
+    vehicle_id: v.id,
+    reg_number: v.register_number,
+    device_id: v.device_id,
+    station_id: v.station_id,
+  }));
+  res.json(mapped);
 });
 
-// GET /vehicles/:vehicleId
-app.get('/vehicles/:vehicleId', (req, res) => {
-  const vId = req.params.vehicleId;
+// GET /vehicles/:id
+app.get('/vehicles/:id', (req, res) => {
+  const vId = req.params.id;
 
   const vehicle = seedData.vehicles.find(
     (v) =>
@@ -139,12 +170,17 @@ app.get('/vehicles/:vehicleId', (req, res) => {
     return res.status(404).json({ error: 'Vehicle not found' });
   }
 
-  res.json(vehicle);
+  res.json({
+    vehicle_id: vehicle.id,
+    reg_number: vehicle.register_number,
+    device_id: vehicle.device_id,
+    station_id: vehicle.station_id,
+  });
 });
 
-// GET /vehicles/:vehicleId/pings
-app.get('/vehicles/:vehicleId/pings', (req, res) => {
-  const vId = req.params.vehicleId;
+// GET /vehicles/:id/pings
+app.get('/vehicles/:id/pings', (req, res) => {
+  const vId = req.params.id;
 
   const vehicle = seedData.vehicles.find(
     (v) =>
@@ -158,7 +194,15 @@ app.get('/vehicles/:vehicleId/pings', (req, res) => {
   }
 
   const pings = seedData.pings.filter((p) => p.vehicle_id === vehicle.id);
-  res.json(pings);
+  const mapped = pings.map((p) => ({
+    ping_id: p.id,
+    vehicle_id: p.vehicle_id,
+    timestamp: p.timestamp,
+    lat: p.latitude,
+    lng: p.longitude,
+    speed: 0,
+  }));
+  res.json(mapped);
 });
 
 function startServer(port) {
