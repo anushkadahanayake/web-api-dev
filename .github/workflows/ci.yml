@@ -31,4 +31,5 @@ jobs:
       run: |
         npm start &
         sleep 2
-        curl -f http://localhost:3000/
+        no_proxy=localhost,127.0.0.1 curl --noproxy "*" -f http://localhost:3000/
+
