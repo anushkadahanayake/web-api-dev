@@ -6,10 +6,7 @@ const app = express();
 
 app.use(express.json());
 
-// Support seed.json with a fallback to police_tuktuk_seed_data.json
-const SEED_DATA_PATH = fs.existsSync(path.join(__dirname, 'seed.json'))
-  ? path.join(__dirname, 'seed.json')
-  : path.join(__dirname, 'police_tuktuk_seed_data.json');
+const SEED_DATA_PATH = path.join(__dirname, 'seed.json');
 
 let seedData = null;
 
