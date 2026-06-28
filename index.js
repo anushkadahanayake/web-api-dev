@@ -155,9 +155,9 @@ app.get('/vehicles', (req, res) => {
   res.json(mapped);
 });
 
-// GET /vehicles/:id
-app.get('/vehicles/:id', (req, res) => {
-  const vId = req.params.id;
+// GET /vehicles/:vehicleId
+app.get('/vehicles/:vehicleId', (req, res) => {
+  const vId = req.params.vehicleId;
 
   const vehicle = seedData.vehicles.find(
     (v) =>
@@ -170,11 +170,30 @@ app.get('/vehicles/:id', (req, res) => {
     return res.status(404).json({ error: 'Vehicle not found' });
   }
 
+  // Find last_ping: filter pings where vehicle_id matches, sort by timestamp descending, take [0]
+  const pings = seedData.pings.filter((p) => p.vehicle_id === vehicle.id);
+  let lastPing = null;
+
+  if (pings.length > 0) {
+    // Sort descending by timestamp
+    pings.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const p = pings[0];
+    lastPing = {
+      ping_id: p.id,
+      vehicle_id: p.vehicle_id,
+      timestamp: p.timestamp,
+      lat: p.latitude,
+      lng: p.longitude,
+      speed: 0,
+    };
+  }
+
   res.json({
     vehicle_id: vehicle.id,
     reg_number: vehicle.register_number,
     device_id: vehicle.device_id,
     station_id: vehicle.station_id,
+    last_ping: lastPing,
   });
 });
 
