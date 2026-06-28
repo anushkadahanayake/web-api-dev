@@ -224,6 +224,41 @@ app.get('/vehicles/:id/pings', (req, res) => {
   res.json(mapped);
 });
 
+// GET /vehicles/:vehicleId/last-position
+app.get('/vehicles/:vehicleId/last-position', (req, res) => {
+  const vId = req.params.vehicleId;
+
+  const vehicle = seedData.vehicles.find(
+    (v) =>
+      v.id === parseInt(vId, 10) ||
+      v.register_number.toLowerCase() === vId.toLowerCase() ||
+      v.device_id.toLowerCase() === vId.toLowerCase(),
+  );
+
+  if (!vehicle) {
+    return res.status(404).json({ error: 'Vehicle not found' });
+  }
+
+  const pings = seedData.pings.filter((p) => p.vehicle_id === vehicle.id);
+
+  if (pings.length === 0) {
+    return res.status(404).json({ error: 'No pings found for this vehicle' });
+  }
+
+  // Sort descending by timestamp
+  pings.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const p = pings[0];
+
+  res.json({
+    vehicle_id: p.vehicle_id,
+    timestamp: p.timestamp,
+    lat: p.latitude,
+    lng: p.longitude,
+    speed: 0,
+  });
+});
+
+
 function startServer(port) {
   const server = app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
