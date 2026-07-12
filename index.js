@@ -6,6 +6,35 @@ const app = express();
 
 app.use(express.json());
 
+function basicAuth(req, res, next) {
+  const authHeader = req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Police API"');
+    return res.status(401).json({ error: 'Unauthorized: Basic authentication required' });
+  }
+
+  const credentials = authHeader.substring(6);
+  const decoded = Buffer.from(credentials, 'base64').toString('utf8');
+  const parts = decoded.split(':');
+  const username = parts[0];
+  const password = parts.slice(1).join(':');
+
+  if (username !== 'police' || password !== 'nibm2024') {
+    return res.status(403).json({ error: 'Forbidden: Invalid credentials' });
+  }
+
+  next();
+}
+
+// Apply basicAuth to all GET routes except the health check (/)
+app.use((req, res, next) => {
+  if (req.method === 'GET' && req.path !== '/') {
+    return basicAuth(req, res, next);
+  }
+  next();
+});
+
+
 const SEED_DATA_PATH = path.join(__dirname, 'seed.json');
 let seedData = null;
 const deviceKeys = {};
