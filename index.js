@@ -279,6 +279,7 @@ app.post('/vehicles/:vehicleId/pings', (req, res) => {
   // 1. Require X-API-Key header (401 if header is absent)
   const apiKey = req.header('X-API-Key');
   if (!apiKey) {
+    res.setHeader('WWW-Authenticate', 'ApiKey realm="vehicles"');
     return res.status(401).json({ error: 'Unauthorized: X-API-Key header is missing' });
   }
 
