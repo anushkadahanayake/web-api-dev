@@ -8,18 +8,34 @@ app.use(express.json());
 
 const SEED_DATA_PATH = path.join(__dirname, 'seed.json');
 let seedData = null;
+const deviceKeys = {};
 
 function loadData() {
   try {
     const raw = fs.readFileSync(SEED_DATA_PATH, 'utf8');
     seedData = JSON.parse(raw);
     console.log('Loaded seed data from seed.json successfully.');
+
+    // Populate deviceKeys dynamically
+    seedData.vehicles.forEach((v) => {
+      const key = `v-${String(v.id).padStart(2, '0')}`;
+      deviceKeys[key] = `key_v${String(v.id).padStart(2, '0')}`;
+    });
   } catch (err) {
     console.error('Failed to load seed data:', err);
     process.exit(1);
   }
 }
 loadData();
+
+function saveData() {
+  try {
+    fs.writeFileSync(SEED_DATA_PATH, JSON.stringify(seedData, null, 2), 'utf8');
+    console.log('Saved seed data successfully.');
+  } catch (err) {
+    console.error('Failed to save seed data:', err);
+  }
+}
 
 // Health Check (GET /)
 app.get('/', (req, res) => {
@@ -257,6 +273,87 @@ app.get('/vehicles/:vehicleId/last-position', (req, res) => {
     speed: 0,
   });
 });
+
+// POST /vehicles/:vehicleId/pings
+app.post('/vehicles/:vehicleId/pings', (req, res) => {
+  // 1. Require X-API-Key header (401 if header is absent)
+  const apiKey = req.header('X-API-Key');
+  if (!apiKey) {
+    return res.status(401).json({ error: 'Unauthorized: X-API-Key header is missing' });
+  }
+
+  // 2. 404 if vehicleId not in vehicles array
+  const vId = req.params.vehicleId;
+  let numericId = parseInt(vId, 10);
+  if (isNaN(numericId) && vId.startsWith('v-')) {
+    numericId = parseInt(vId.substring(2), 10);
+  }
+
+  const vehicle = seedData.vehicles.find(
+    (v) =>
+      v.id === numericId ||
+      v.register_number.toLowerCase() === vId.toLowerCase() ||
+      v.device_id.toLowerCase() === vId.toLowerCase(),
+  );
+
+  if (!vehicle) {
+    return res.status(404).json({ error: 'Vehicle not found' });
+  }
+
+  // 3. 403 if key does not match deviceKeys[vehicleId]
+  const lookupKey = `v-${String(vehicle.id).padStart(2, '0')}`;
+  if (apiKey !== deviceKeys[lookupKey]) {
+    return res.status(403).json({ error: 'Forbidden: Invalid API key for this vehicle' });
+  }
+
+  // 4. 400 if body missing latitude, longitude, or speed
+  const { latitude, longitude, speed } = req.body;
+  if (latitude === undefined || longitude === undefined || speed === undefined) {
+    return res.status(400).json({ error: 'Bad Request: Missing latitude, longitude, or speed' });
+  }
+
+  // 5. Server sets timestamp
+  const timestamp = new Date().toISOString();
+
+  // 6. Push ping to array
+  const maxPingId = seedData.pings.reduce((max, p) => (p.id > max ? p.id : max), 0);
+  const newPingId = maxPingId + 1;
+
+  const newPing = {
+    id: newPingId,
+    vehicle_id: vehicle.id,
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+    timestamp,
+    speed: Number(speed),
+  };
+
+  seedData.pings.push(newPing);
+  saveData();
+
+  // 7. Set Location header: /vehicles/:vehicleId/pings/:pingId
+  res.setHeader('Location', `/vehicles/${vehicle.id}/pings/${newPingId}`);
+
+  // 8. Set ETag and Last-Modified headers
+  const crypto = require('crypto');
+  const responseJson = {
+    ping_id: newPing.id,
+    vehicle_id: newPing.vehicle_id,
+    timestamp: newPing.timestamp,
+    lat: newPing.latitude,
+    lng: newPing.longitude,
+    speed: newPing.speed,
+  };
+  const responseBody = JSON.stringify(responseJson);
+  const etag = crypto.createHash('md5').update(responseBody).digest('base64');
+  res.setHeader('ETag', `W/"${etag}"`);
+  res.setHeader('Last-Modified', new Date(timestamp).toUTCString());
+
+  // 9. Return 201 Created
+  res.status(201).json(responseJson);
+});
+
+
 
 
 function startServer(port) {
