@@ -16,11 +16,15 @@ This document serves as the technical reference for the Police TukTuk REST API p
 
 ## 🛣️ API Routing Registry
 
-All route paths use lowercase naming conventions and hyphen separators. Response payloads are served as clean JSON objects without envelope wrappers.
+All route paths use lowercase naming conventions and hyphen separators. Response payloads are served as clean JSON objects without envelope wrappers. JWT authentication (Bearer Token) is required for all endpoints except `GET /`, `POST /auth/login`, and `POST /vehicles/:vehicleId/pings`.
 
-### 1. General
-- **`GET /`**: Health check.
+### 1. Authentication & General
+- **`POST /auth/login`**: Authenticates credentials and returns a JWT Bearer token.
+  - **Body**: `{ "username": "police", "password": "nibm2024" }`
+  - **Response**: `{ "token": "eyJhbGciOi..." }`
+- **`GET /`**: Health check (public).
   - **Response**: `{"status": "ok", "session": "N86007CEM S2"}`
+
 
 ### 2. Provinces
 - **`GET /provinces`**: Lists all provinces in the system.
@@ -77,11 +81,11 @@ All route paths use lowercase naming conventions and hyphen separators. Response
   - **Logic**: Returns the newest ping. Yields `404` if no pings are recorded.
   - **Response**: `{ "vehicle_id": number, "timestamp": string, "lat": number, "lng": number, "speed": number }`
 - **`POST /vehicles`**: Adds a new vehicle record to MongoDB.
-  - **Authentication**: Basic Auth (`police` / `nibm2024`).
+  - **Authentication**: JWT Bearer Token.
   - **Body**: `{ "vehicle_id": number, "reg_number": string, "device_id": string, "station_id": number }`
   - **Response**: `201 Created` with `Location` header to `/vehicles/:id`.
 - **`PUT /vehicles/:vehicleId`**: Creates or updates a vehicle record.
-  - **Authentication**: Basic Auth (`police` / `nibm2024`).
+  - **Authentication**: JWT Bearer Token.
   - **Body**: `{ "reg_number": string, "device_id": string, "station_id": number }`
   - **Response**: `200 OK` (updated) or `201 Created` (upserted).
 
