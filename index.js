@@ -27,9 +27,12 @@ function basicAuth(req, res, next) {
   next();
 }
 
-// Apply basicAuth to all GET routes except the health check (/)
+// Apply basicAuth to all routes except health check (GET /) and ping ingestion (POST /vehicles/:vehicleId/pings)
 app.use((req, res, next) => {
-  if (req.method === 'GET' && req.path !== '/') {
+  const isHealthCheck = req.method === 'GET' && req.path === '/';
+  const isPostPing = req.method === 'POST' && /^\/vehicles\/[^/]+\/pings\/?$/.test(req.path);
+
+  if (!isHealthCheck && !isPostPing) {
     return basicAuth(req, res, next);
   }
   next();
@@ -238,6 +241,109 @@ app.get('/vehicles', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST /vehicles
+app.post('/vehicles', async (req, res) => {
+  try {
+    const { vehicle_id, reg_number, device_id, station_id } = req.body;
+    if (vehicle_id === undefined || reg_number === undefined || device_id === undefined || station_id === undefined) {
+      return res.status(400).json({ error: 'Bad Request: Missing vehicle_id, reg_number, device_id, or station_id' });
+    }
+
+    // Check for duplicate vehicle_id, reg_number, or device_id
+    const duplicate = await Vehicle.findOne({
+      $or: [
+        { vehicle_id: Number(vehicle_id) },
+        { reg_number: new RegExp(`^${reg_number}$`, 'i') },
+        { device_id: new RegExp(`^${device_id}$`, 'i') }
+      ]
+    });
+
+    if (duplicate) {
+      return res.status(409).json({ error: 'Conflict: Vehicle with this ID, registration number, or device ID already exists' });
+    }
+
+    const newVehicle = new Vehicle({
+      vehicle_id: Number(vehicle_id),
+      reg_number,
+      device_id,
+      station_id: Number(station_id)
+    });
+
+    await newVehicle.save();
+
+    res.setHeader('Location', `/vehicles/${newVehicle.vehicle_id}`);
+    res.status(201).json({
+      vehicle_id: newVehicle.vehicle_id,
+      reg_number: newVehicle.reg_number,
+      device_id: newVehicle.device_id,
+      station_id: newVehicle.station_id
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /vehicles/:vehicleId
+app.put('/vehicles/:vehicleId', async (req, res) => {
+  try {
+    const vId = req.params.vehicleId;
+    const vehicleId = parseInt(vId, 10);
+    if (isNaN(vehicleId)) {
+      return res.status(400).json({ error: 'Bad Request: vehicleId must be an integer' });
+    }
+
+    const { reg_number, device_id, station_id } = req.body;
+    if (reg_number === undefined || device_id === undefined || station_id === undefined) {
+      return res.status(400).json({ error: 'Bad Request: Missing reg_number, device_id, or station_id' });
+    }
+
+    let vehicle = await Vehicle.findOne({ vehicle_id });
+    if (vehicle) {
+      // Update
+      vehicle.reg_number = reg_number;
+      vehicle.device_id = device_id;
+      vehicle.station_id = Number(station_id);
+      await vehicle.save();
+      return res.json({
+        vehicle_id: vehicle.vehicle_id,
+        reg_number: vehicle.reg_number,
+        device_id: vehicle.device_id,
+        station_id: vehicle.station_id
+      });
+    } else {
+      // Create (Upsert)
+      // Check duplicate reg_number or device_id for other vehicles
+      const duplicate = await Vehicle.findOne({
+        $or: [
+          { reg_number: new RegExp(`^${reg_number}$`, 'i') },
+          { device_id: new RegExp(`^${device_id}$`, 'i') }
+        ]
+      });
+      if (duplicate) {
+        return res.status(409).json({ error: 'Conflict: Vehicle with this registration number or device ID already exists' });
+      }
+
+      const newVehicle = new Vehicle({
+        vehicle_id,
+        reg_number,
+        device_id,
+        station_id: Number(station_id)
+      });
+      await newVehicle.save();
+      res.setHeader('Location', `/vehicles/${newVehicle.vehicle_id}`);
+      return res.status(201).json({
+        vehicle_id: newVehicle.vehicle_id,
+        reg_number: newVehicle.reg_number,
+        device_id: newVehicle.device_id,
+        station_id: newVehicle.station_id
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // GET /vehicles/:vehicleId
 app.get('/vehicles/:vehicleId', async (req, res) => {
