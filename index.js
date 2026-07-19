@@ -42,12 +42,15 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB successfully.'))
-  .catch((err) => {
-    console.error('Failed to connect to MongoDB:', err);
-  });
+let cachedDb = null;
+async function connectToDatabase() {
+  if (cachedDb && mongoose.connection.readyState === 1) {
+    return cachedDb;
+  }
+  cachedDb = await mongoose.connect(MONGODB_URI);
+  return cachedDb;
+}
+
 
 // Mongoose Schemas & Models
 const provinceSchema = new mongoose.Schema({
