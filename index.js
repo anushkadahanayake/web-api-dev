@@ -51,6 +51,18 @@ async function connectToDatabase() {
   return cachedDb;
 }
 
+// Database connection middleware to ensure connection on every request (Vercel serverless compatibility)
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (err) {
+    console.error('Database connection error in middleware:', err);
+    res.status(500).json({ error: 'Database connection failed: ' + err.message });
+  }
+});
+
+
 
 // Mongoose Schemas & Models
 const provinceSchema = new mongoose.Schema({
