@@ -298,7 +298,7 @@ app.put('/vehicles/:vehicleId', async (req, res) => {
       return res.status(400).json({ error: 'Bad Request: Missing reg_number, device_id, or station_id' });
     }
 
-    let vehicle = await Vehicle.findOne({ vehicle_id });
+    let vehicle = await Vehicle.findOne({ vehicle_id: vehicleId });
     if (vehicle) {
       // Update
       vehicle.reg_number = reg_number;
@@ -325,7 +325,7 @@ app.put('/vehicles/:vehicleId', async (req, res) => {
       }
 
       const newVehicle = new Vehicle({
-        vehicle_id,
+        vehicle_id: vehicleId,
         reg_number,
         device_id,
         station_id: Number(station_id)
