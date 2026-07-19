@@ -6,37 +6,53 @@ const app = express();
 
 app.use(express.json());
 
-// Basic Authentication Middleware
-function basicAuth(req, res, next) {
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_police_jwt_secret';
+
+// JWT Authentication Middleware
+function jwtAuth(req, res, next) {
   const authHeader = req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Police API"');
-    return res.status(401).json({ error: 'Unauthorized: Basic authentication required' });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Bearer token is missing' });
   }
 
-  const credentials = authHeader.substring(6);
-  const decoded = Buffer.from(credentials, 'base64').toString('utf8');
-  const parts = decoded.split(':');
-  const username = parts[0];
-  const password = parts.slice(1).join(':');
-
-  if (username !== 'police' || password !== 'nibm2024') {
-    return res.status(403).json({ error: 'Forbidden: Invalid credentials' });
+  const token = authHeader.substring(7);
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Forbidden: Invalid or expired token' });
   }
-
-  next();
 }
 
-// Apply basicAuth to all routes except health check (GET /) and ping ingestion (POST /vehicles/:vehicleId/pings)
+// Apply jwtAuth to all routes except health check (GET /), login (POST /auth/login), and ping ingestion (POST /vehicles/:vehicleId/pings)
 app.use((req, res, next) => {
   const isHealthCheck = req.method === 'GET' && req.path === '/';
+  const isLogin = req.method === 'POST' && req.path === '/auth/login';
   const isPostPing = req.method === 'POST' && /^\/vehicles\/[^/]+\/pings\/?$/.test(req.path);
 
-  if (!isHealthCheck && !isPostPing) {
-    return basicAuth(req, res, next);
+  if (!isHealthCheck && !isLogin && !isPostPing) {
+    return jwtAuth(req, res, next);
   }
   next();
 });
+
+// POST /auth/login
+app.post('/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Bad Request: Missing username or password' });
+  }
+
+  if (username === 'police' && password === 'nibm2024') {
+    const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '24h' });
+    return res.json({ token });
+  }
+
+  res.status(401).json({ error: 'Invalid username or password' });
+});
+
 
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI;
