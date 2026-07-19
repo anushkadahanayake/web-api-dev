@@ -76,6 +76,14 @@ All route paths use lowercase naming conventions and hyphen separators. Response
   - **Lookup Key**: Accepts vehicle `id`, `register_number`, or `device_id`.
   - **Logic**: Returns the newest ping. Yields `404` if no pings are recorded.
   - **Response**: `{ "vehicle_id": number, "timestamp": string, "lat": number, "lng": number, "speed": number }`
+- **`POST /vehicles`**: Adds a new vehicle record to MongoDB.
+  - **Authentication**: Basic Auth (`police` / `nibm2024`).
+  - **Body**: `{ "vehicle_id": number, "reg_number": string, "device_id": string, "station_id": number }`
+  - **Response**: `201 Created` with `Location` header to `/vehicles/:id`.
+- **`PUT /vehicles/:vehicleId`**: Creates or updates a vehicle record.
+  - **Authentication**: Basic Auth (`police` / `nibm2024`).
+  - **Body**: `{ "reg_number": string, "device_id": string, "station_id": number }`
+  - **Response**: `200 OK` (updated) or `201 Created` (upserted).
 
 *Note: The `speed` attribute is currently defaulted to `0` in location pings as it is not present in the static seed data.*
 
