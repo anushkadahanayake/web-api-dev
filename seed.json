@@ -260376,6 +260376,14 @@
       "longitude": 80.60383,
       "timestamp": "2026-07-12T09:58:31.198Z",
       "speed": 15
+    },
+    {
+      "id": 36962,
+      "vehicle_id": 1,
+      "latitude": 7.312694,
+      "longitude": 80.60383,
+      "timestamp": "2026-07-12T10:16:37.956Z",
+      "speed": 15
     }
   ]
 }
