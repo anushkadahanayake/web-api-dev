@@ -1,11 +1,12 @@
+require('dotenv').config();
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const mongoose = require('mongoose');
 
 const app = express();
 
 app.use(express.json());
 
+// Basic Authentication Middleware
 function basicAuth(req, res, next) {
   const authHeader = req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -34,37 +35,61 @@ app.use((req, res, next) => {
   next();
 });
 
-
-const SEED_DATA_PATH = path.join(__dirname, 'seed.json');
-let seedData = null;
-const deviceKeys = {};
-
-function loadData() {
-  try {
-    const raw = fs.readFileSync(SEED_DATA_PATH, 'utf8');
-    seedData = JSON.parse(raw);
-    console.log('Loaded seed data from seed.json successfully.');
-
-    // Populate deviceKeys dynamically
-    seedData.vehicles.forEach((v) => {
-      const key = `v-${String(v.id).padStart(2, '0')}`;
-      deviceKeys[key] = `key_v${String(v.id).padStart(2, '0')}`;
-    });
-  } catch (err) {
-    console.error('Failed to load seed data:', err);
-    process.exit(1);
-  }
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  console.error('Error: MONGODB_URI is not defined in the environment variables.');
+  process.exit(1);
 }
-loadData();
 
-function saveData() {
-  try {
-    fs.writeFileSync(SEED_DATA_PATH, JSON.stringify(seedData, null, 2), 'utf8');
-    console.log('Saved seed data successfully.');
-  } catch (err) {
-    console.error('Failed to save seed data:', err);
-  }
-}
+mongoose
+  .connect(MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB successfully.'))
+  .catch((err) => {
+    console.error('Failed to connect to MongoDB:', err);
+  });
+
+// Mongoose Schemas & Models
+const provinceSchema = new mongoose.Schema({
+  province_id: { type: Number, required: true, unique: true },
+  name: { type: String, required: true },
+});
+const Province = mongoose.model('Province', provinceSchema);
+
+const districtSchema = new mongoose.Schema({
+  district_id: { type: Number, required: true, unique: true },
+  name: { type: String, required: true },
+  province_id: { type: Number, required: true },
+});
+const District = mongoose.model('District', districtSchema);
+
+const stationSchema = new mongoose.Schema({
+  station_id: { type: Number, required: true, unique: true },
+  name: { type: String, required: true },
+  district_id: { type: Number, required: true },
+});
+const Station = mongoose.model('Station', stationSchema);
+
+const vehicleSchema = new mongoose.Schema({
+  vehicle_id: { type: Number, required: true, unique: true },
+  reg_number: { type: String, required: true, unique: true },
+  device_id: { type: String, required: true, unique: true },
+  station_id: { type: Number, required: true },
+});
+const Vehicle = mongoose.model('Vehicle', vehicleSchema);
+
+const pingSchema = new mongoose.Schema({
+  ping_id: { type: Number, required: true, unique: true },
+  vehicle_id: { type: Number, required: true },
+  timestamp: { type: Date, required: true, default: Date.now },
+  lat: { type: Number, required: true },
+  lng: { type: Number, required: true },
+  speed: { type: Number, required: true, default: 0 },
+});
+const Ping = mongoose.model('Ping', pingSchema);
+
+// Export Models for Seeding
+module.exports = { Province, District, Station, Vehicle, Ping };
 
 // Health Check (GET /)
 app.get('/', (req, res) => {
@@ -75,316 +100,336 @@ app.get('/', (req, res) => {
 });
 
 // GET /provinces
-app.get('/provinces', (req, res) => {
-  const mapped = seedData.provinces.map((p) => ({
-    province_id: p.id,
-    name: p.name,
-  }));
-  res.json(mapped);
+app.get('/provinces', async (req, res) => {
+  try {
+    const provinces = await Province.find({}, 'province_id name -_id');
+    res.json(provinces);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /provinces/:id
-app.get('/provinces/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const province = seedData.provinces.find((p) => p.id === id);
+app.get('/provinces/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const province = await Province.findOne({ province_id: id }, 'province_id name -_id');
 
-  if (!province) {
-    return res.status(404).json({ error: 'Province not found' });
+    if (!province) {
+      return res.status(404).json({ error: 'Province not found' });
+    }
+
+    res.json(province);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({
-    province_id: province.id,
-    name: province.name,
-  });
 });
 
 // GET /districts
-app.get('/districts', (req, res) => {
-  const { province_id } = req.query;
-  let districts = seedData.districts;
+app.get('/districts', async (req, res) => {
+  try {
+    const { province_id } = req.query;
+    const filter = {};
 
-  if (province_id) {
-    const provId = parseInt(province_id, 10);
-    districts = districts.filter((d) => d.province_id === provId);
+    if (province_id) {
+      filter.province_id = parseInt(province_id, 10);
+    }
+
+    const districts = await District.find(filter, 'district_id name province_id -_id');
+    res.json(districts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const mapped = districts.map((d) => ({
-    district_id: d.id,
-    name: d.name,
-    province_id: d.province_id,
-  }));
-  res.json(mapped);
 });
 
 // GET /districts/:id
-app.get('/districts/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const district = seedData.districts.find((d) => d.id === id);
+app.get('/districts/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const district = await District.findOne({ district_id: id }, 'district_id name province_id -_id');
 
-  if (!district) {
-    return res.status(404).json({ error: 'District not found' });
+    if (!district) {
+      return res.status(404).json({ error: 'District not found' });
+    }
+
+    res.json(district);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({
-    district_id: district.id,
-    name: district.name,
-    province_id: district.province_id,
-  });
 });
 
 // GET /stations
-app.get('/stations', (req, res) => {
-  const { district_id } = req.query;
-  let stations = seedData.stations;
+app.get('/stations', async (req, res) => {
+  try {
+    const { district_id } = req.query;
+    const filter = {};
 
-  if (district_id) {
-    const distId = parseInt(district_id, 10);
-    stations = stations.filter((s) => s.district_id === distId);
+    if (district_id) {
+      filter.district_id = parseInt(district_id, 10);
+    }
+
+    const stations = await Station.find(filter, 'station_id name district_id -_id');
+    res.json(stations);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const mapped = stations.map((s) => ({
-    station_id: s.id,
-    name: s.name,
-    district_id: s.district_id,
-  }));
-  res.json(mapped);
 });
 
 // GET /stations/:id
-app.get('/stations/:id', (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const station = seedData.stations.find((s) => s.id === id);
+app.get('/stations/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const station = await Station.findOne({ station_id: id }, 'station_id name district_id -_id');
 
-  if (!station) {
-    return res.status(404).json({ error: 'Station not found' });
+    if (!station) {
+      return res.status(404).json({ error: 'Station not found' });
+    }
+
+    res.json(station);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({
-    station_id: station.id,
-    name: station.name,
-    district_id: station.district_id,
-  });
 });
 
 // GET /vehicles
-app.get('/vehicles', (req, res) => {
-  const { station_id, district_id, province_id } = req.query;
-  let vehicles = seedData.vehicles;
+app.get('/vehicles', async (req, res) => {
+  try {
+    const { station_id, district_id, province_id } = req.query;
+    const filter = {};
 
-  if (station_id) {
-    const statId = parseInt(station_id, 10);
-    vehicles = vehicles.filter((v) => v.station_id === statId);
-  } else if (district_id) {
-    const distId = parseInt(district_id, 10);
-    const stationIds = new Set(
-      seedData.stations.filter((s) => s.district_id === distId).map((s) => s.id),
+    if (station_id) {
+      filter.station_id = parseInt(station_id, 10);
+    } else if (district_id) {
+      const distId = parseInt(district_id, 10);
+      const stations = await Station.find({ district_id: distId });
+      filter.station_id = { $in: stations.map((s) => s.station_id) };
+    } else if (province_id) {
+      const provId = parseInt(province_id, 10);
+      const districts = await District.find({ province_id: provId });
+      const stations = await Station.find({
+        district_id: { $in: districts.map((d) => d.district_id) },
+      });
+      filter.station_id = { $in: stations.map((s) => s.station_id) };
+    }
+
+    const vehicles = await Vehicle.find(
+      filter,
+      'vehicle_id reg_number device_id station_id -_id',
     );
-    vehicles = vehicles.filter((v) => stationIds.has(v.station_id));
-  } else if (province_id) {
-    const provId = parseInt(province_id, 10);
-    const districtIds = new Set(
-      seedData.districts.filter((d) => d.province_id === provId).map((d) => d.id),
-    );
-    const stationIds = new Set(
-      seedData.stations.filter((s) => districtIds.has(s.district_id)).map((s) => s.id),
-    );
-    vehicles = vehicles.filter((v) => stationIds.has(v.station_id));
+    res.json(vehicles);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const mapped = vehicles.map((v) => ({
-    vehicle_id: v.id,
-    reg_number: v.register_number,
-    device_id: v.device_id,
-    station_id: v.station_id,
-  }));
-  res.json(mapped);
 });
 
 // GET /vehicles/:vehicleId
-app.get('/vehicles/:vehicleId', (req, res) => {
-  const vId = req.params.vehicleId;
-
-  const vehicle = seedData.vehicles.find(
-    (v) =>
-      v.id === parseInt(vId, 10) ||
-      v.register_number.toLowerCase() === vId.toLowerCase() ||
-      v.device_id.toLowerCase() === vId.toLowerCase(),
-  );
-
-  if (!vehicle) {
-    return res.status(404).json({ error: 'Vehicle not found' });
-  }
-
-  // Find last_ping: filter pings where vehicle_id matches, sort by timestamp descending, take [0]
-  const pings = seedData.pings.filter((p) => p.vehicle_id === vehicle.id);
-  let lastPing = null;
-
-  if (pings.length > 0) {
-    // Sort descending by timestamp
-    pings.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const p = pings[0];
-    lastPing = {
-      ping_id: p.id,
-      vehicle_id: p.vehicle_id,
-      timestamp: p.timestamp,
-      lat: p.latitude,
-      lng: p.longitude,
-      speed: 0,
+app.get('/vehicles/:vehicleId', async (req, res) => {
+  try {
+    const vId = req.params.vehicleId;
+    const numericId = parseInt(vId, 10);
+    const query = {
+      $or: [
+        { vehicle_id: isNaN(numericId) ? -1 : numericId },
+        { reg_number: new RegExp(`^${vId}$`, 'i') },
+        { device_id: new RegExp(`^${vId}$`, 'i') },
+      ],
     };
-  }
 
-  res.json({
-    vehicle_id: vehicle.id,
-    reg_number: vehicle.register_number,
-    device_id: vehicle.device_id,
-    station_id: vehicle.station_id,
-    last_ping: lastPing,
-  });
+    const vehicle = await Vehicle.findOne(query);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    // Find last_ping: filter pings where vehicle_id matches, sort by timestamp descending, take [0]
+    const lastPingDoc = await Ping.findOne({ vehicle_id: vehicle.vehicle_id }).sort({
+      timestamp: -1,
+    });
+    let lastPing = null;
+
+    if (lastPingDoc) {
+      lastPing = {
+        ping_id: lastPingDoc.ping_id,
+        vehicle_id: lastPingDoc.vehicle_id,
+        timestamp: lastPingDoc.timestamp.toISOString(),
+        lat: lastPingDoc.lat,
+        lng: lastPingDoc.lng,
+        speed: lastPingDoc.speed,
+      };
+    }
+
+    res.json({
+      vehicle_id: vehicle.vehicle_id,
+      reg_number: vehicle.reg_number,
+      device_id: vehicle.device_id,
+      station_id: vehicle.station_id,
+      last_ping: lastPing,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /vehicles/:id/pings
-app.get('/vehicles/:id/pings', (req, res) => {
-  const vId = req.params.id;
+app.get('/vehicles/:id/pings', async (req, res) => {
+  try {
+    const vId = req.params.id;
+    const numericId = parseInt(vId, 10);
+    const query = {
+      $or: [
+        { vehicle_id: isNaN(numericId) ? -1 : numericId },
+        { reg_number: new RegExp(`^${vId}$`, 'i') },
+        { device_id: new RegExp(`^${vId}$`, 'i') },
+      ],
+    };
 
-  const vehicle = seedData.vehicles.find(
-    (v) =>
-      v.id === parseInt(vId, 10) ||
-      v.register_number.toLowerCase() === vId.toLowerCase() ||
-      v.device_id.toLowerCase() === vId.toLowerCase(),
-  );
+    const vehicle = await Vehicle.findOne(query);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
 
-  if (!vehicle) {
-    return res.status(404).json({ error: 'Vehicle not found' });
+    const pings = await Ping.find(
+      { vehicle_id: vehicle.vehicle_id },
+      'ping_id vehicle_id timestamp lat lng speed -_id',
+    );
+    const mapped = pings.map((p) => ({
+      ping_id: p.ping_id,
+      vehicle_id: p.vehicle_id,
+      timestamp: p.timestamp.toISOString(),
+      lat: p.lat,
+      lng: p.lng,
+      speed: p.speed,
+    }));
+    res.json(mapped);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const pings = seedData.pings.filter((p) => p.vehicle_id === vehicle.id);
-  const mapped = pings.map((p) => ({
-    ping_id: p.id,
-    vehicle_id: p.vehicle_id,
-    timestamp: p.timestamp,
-    lat: p.latitude,
-    lng: p.longitude,
-    speed: 0,
-  }));
-  res.json(mapped);
 });
 
 // GET /vehicles/:vehicleId/last-position
-app.get('/vehicles/:vehicleId/last-position', (req, res) => {
-  const vId = req.params.vehicleId;
+app.get('/vehicles/:vehicleId/last-position', async (req, res) => {
+  try {
+    const vId = req.params.vehicleId;
+    const numericId = parseInt(vId, 10);
+    const query = {
+      $or: [
+        { vehicle_id: isNaN(numericId) ? -1 : numericId },
+        { reg_number: new RegExp(`^${vId}$`, 'i') },
+        { device_id: new RegExp(`^${vId}$`, 'i') },
+      ],
+    };
 
-  const vehicle = seedData.vehicles.find(
-    (v) =>
-      v.id === parseInt(vId, 10) ||
-      v.register_number.toLowerCase() === vId.toLowerCase() ||
-      v.device_id.toLowerCase() === vId.toLowerCase(),
-  );
+    const vehicle = await Vehicle.findOne(query);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
 
-  if (!vehicle) {
-    return res.status(404).json({ error: 'Vehicle not found' });
+    const p = await Ping.findOne({ vehicle_id: vehicle.vehicle_id }).sort({
+      timestamp: -1,
+    });
+    if (!p) {
+      return res.status(404).json({ error: 'No pings found for this vehicle' });
+    }
+
+    res.json({
+      vehicle_id: p.vehicle_id,
+      timestamp: p.timestamp.toISOString(),
+      lat: p.lat,
+      lng: p.lng,
+      speed: p.speed,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const pings = seedData.pings.filter((p) => p.vehicle_id === vehicle.id);
-
-  if (pings.length === 0) {
-    return res.status(404).json({ error: 'No pings found for this vehicle' });
-  }
-
-  // Sort descending by timestamp
-  pings.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  const p = pings[0];
-
-  res.json({
-    vehicle_id: p.vehicle_id,
-    timestamp: p.timestamp,
-    lat: p.latitude,
-    lng: p.longitude,
-    speed: 0,
-  });
 });
 
 // POST /vehicles/:vehicleId/pings
-app.post('/vehicles/:vehicleId/pings', (req, res) => {
-  // 1. Require X-API-Key header (401 if header is absent)
-  const apiKey = req.header('X-API-Key');
-  if (!apiKey) {
-    res.setHeader('WWW-Authenticate', 'ApiKey realm="vehicles"');
-    return res.status(401).json({ error: 'Unauthorized: X-API-Key header is missing' });
+app.post('/vehicles/:vehicleId/pings', async (req, res) => {
+  try {
+    // 1. Require X-API-Key header (401 if header is absent)
+    const apiKey = req.header('X-API-Key');
+    if (!apiKey) {
+      res.setHeader('WWW-Authenticate', 'ApiKey realm="vehicles"');
+      return res.status(401).json({ error: 'Unauthorized: X-API-Key header is missing' });
+    }
+
+    // 2. 404 if vehicleId not in vehicles array
+    const vId = req.params.vehicleId;
+    let numericId = parseInt(vId, 10);
+    if (isNaN(numericId) && vId.startsWith('v-')) {
+      numericId = parseInt(vId.substring(2), 10);
+    }
+
+    const query = {
+      $or: [
+        { vehicle_id: isNaN(numericId) ? -1 : numericId },
+        { reg_number: new RegExp(`^${vId}$`, 'i') },
+        { device_id: new RegExp(`^${vId}$`, 'i') },
+      ],
+    };
+
+    const vehicle = await Vehicle.findOne(query);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    // 3. 403 if key does not match deviceKeys[vehicleId]
+    const expectedKey = `key_v${String(vehicle.vehicle_id).padStart(2, '0')}`;
+    if (apiKey !== expectedKey) {
+      return res
+        .status(403)
+        .json({ error: 'Forbidden: Invalid API key for this vehicle' });
+    }
+
+    // 4. 400 if body missing latitude, longitude, or speed
+    const { latitude, longitude, speed } = req.body;
+    if (latitude === undefined || longitude === undefined || speed === undefined) {
+      return res
+        .status(400)
+        .json({ error: 'Bad Request: Missing latitude, longitude, or speed' });
+    }
+
+    // 5. Server sets timestamp
+    const timestamp = new Date();
+
+    // 6. Push ping to database (generate next ping_id)
+    const maxPing = await Ping.findOne().sort({ ping_id: -1 });
+    const newPingId = maxPing ? maxPing.ping_id + 1 : 1;
+
+    const newPing = new Ping({
+      ping_id: newPingId,
+      vehicle_id: vehicle.vehicle_id,
+      lat: Number(latitude),
+      lng: Number(longitude),
+      timestamp,
+      speed: Number(speed),
+    });
+
+    await newPing.save();
+
+    // 7. Set Location header: /vehicles/:vehicleId/pings/:pingId
+    res.setHeader('Location', `/vehicles/${vehicle.vehicle_id}/pings/${newPingId}`);
+
+    // 8. Set ETag and Last-Modified headers
+    const crypto = require('crypto');
+    const responseJson = {
+      ping_id: newPing.ping_id,
+      vehicle_id: newPing.vehicle_id,
+      timestamp: newPing.timestamp.toISOString(),
+      lat: newPing.lat,
+      lng: newPing.lng,
+      speed: newPing.speed,
+    };
+    const responseBody = JSON.stringify(responseJson);
+    const etag = crypto.createHash('md5').update(responseBody).digest('base64');
+    res.setHeader('ETag', `W/"${etag}"`);
+    res.setHeader('Last-Modified', timestamp.toUTCString());
+
+    // 9. Return 201 Created
+    res.status(201).json(responseJson);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  // 2. 404 if vehicleId not in vehicles array
-  const vId = req.params.vehicleId;
-  let numericId = parseInt(vId, 10);
-  if (isNaN(numericId) && vId.startsWith('v-')) {
-    numericId = parseInt(vId.substring(2), 10);
-  }
-
-  const vehicle = seedData.vehicles.find(
-    (v) =>
-      v.id === numericId ||
-      v.register_number.toLowerCase() === vId.toLowerCase() ||
-      v.device_id.toLowerCase() === vId.toLowerCase(),
-  );
-
-  if (!vehicle) {
-    return res.status(404).json({ error: 'Vehicle not found' });
-  }
-
-  // 3. 403 if key does not match deviceKeys[vehicleId]
-  const lookupKey = `v-${String(vehicle.id).padStart(2, '0')}`;
-  if (apiKey !== deviceKeys[lookupKey]) {
-    return res.status(403).json({ error: 'Forbidden: Invalid API key for this vehicle' });
-  }
-
-  // 4. 400 if body missing latitude, longitude, or speed
-  const { latitude, longitude, speed } = req.body;
-  if (latitude === undefined || longitude === undefined || speed === undefined) {
-    return res.status(400).json({ error: 'Bad Request: Missing latitude, longitude, or speed' });
-  }
-
-  // 5. Server sets timestamp
-  const timestamp = new Date().toISOString();
-
-  // 6. Push ping to array
-  const maxPingId = seedData.pings.reduce((max, p) => (p.id > max ? p.id : max), 0);
-  const newPingId = maxPingId + 1;
-
-  const newPing = {
-    id: newPingId,
-    vehicle_id: vehicle.id,
-    latitude: Number(latitude),
-    longitude: Number(longitude),
-    timestamp,
-    speed: Number(speed),
-  };
-
-  seedData.pings.push(newPing);
-  saveData();
-
-  // 7. Set Location header: /vehicles/:vehicleId/pings/:pingId
-  res.setHeader('Location', `/vehicles/${vehicle.id}/pings/${newPingId}`);
-
-  // 8. Set ETag and Last-Modified headers
-  const crypto = require('crypto');
-  const responseJson = {
-    ping_id: newPing.id,
-    vehicle_id: newPing.vehicle_id,
-    timestamp: newPing.timestamp,
-    lat: newPing.latitude,
-    lng: newPing.longitude,
-    speed: newPing.speed,
-  };
-  const responseBody = JSON.stringify(responseJson);
-  const etag = crypto.createHash('md5').update(responseBody).digest('base64');
-  res.setHeader('ETag', `W/"${etag}"`);
-  res.setHeader('Last-Modified', new Date(timestamp).toUTCString());
-
-  // 9. Return 201 Created
-  res.status(201).json(responseJson);
 });
-
-
-
 
 function startServer(port) {
   const server = app.listen(port, () => {
@@ -401,5 +446,7 @@ function startServer(port) {
   });
 }
 
-const DEFAULT_PORT = parseInt(process.env.PORT || '3000', 10);
-startServer(DEFAULT_PORT);
+if (require.main === module) {
+  const DEFAULT_PORT = parseInt(process.env.PORT || '3000', 10);
+  startServer(DEFAULT_PORT);
+}
