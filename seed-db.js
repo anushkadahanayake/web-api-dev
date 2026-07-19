@@ -2,7 +2,8 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
-const { Province, District, Station, Vehicle, Ping } = require('./index');
+const app = require('./index');
+const { Province, District, Station, Vehicle, Ping } = app.models;
 
 const SEED_DATA_PATH = path.join(__dirname, 'seed.json');
 

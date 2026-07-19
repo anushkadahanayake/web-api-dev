@@ -88,8 +88,10 @@ const pingSchema = new mongoose.Schema({
 });
 const Ping = mongoose.model('Ping', pingSchema);
 
-// Export Models for Seeding
-module.exports = { Province, District, Station, Vehicle, Ping };
+// Export app (Vercel expects default export to be Express app) and attach models for seeding
+app.models = { Province, District, Station, Vehicle, Ping };
+module.exports = app;
+
 
 // Health Check (GET /)
 app.get('/', (req, res) => {
